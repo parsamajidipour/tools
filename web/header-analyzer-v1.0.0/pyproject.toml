@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "parsa-header-analyzer"
+version = "1.0.0"
+description = "Practical HTTP response security-header analyzer"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Parsa Majidipour"}]
+dependencies = ["requests>=2.32.0,<3.0.0"]
+
+[project.scripts]
+header-analyzer = "header_analyzer:main"
+
+[tool.setuptools]
+py-modules = ["header_analyzer"]
