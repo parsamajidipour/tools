@@ -1,10 +1,10 @@
-# Tools
+# Security Tools
 
-A curated collection of tools, scripts, and utilities developed or customized for practical security research, reconnaissance, Linux administration, networking, and workflow automation.
+A collection of practical tools, scripts, and utilities built for security research, web application testing, and Linux administration.
 
-The primary goal of this repository is to centralize small utilities that simplify repetitive tasks, improve research workflows, and automate common operations encountered during security assessments.
+This repository contains small, focused tools that simplify repetitive tasks, automate workflows, and support day-to-day security assessments.
 
-> All tools are intended for authorized security testing, research, educational purposes, and defensive security only.
+> Every tool in this repository is developed for authorized security testing, defensive research, and educational purposes only.
 
 ---
 
@@ -13,117 +13,63 @@ The primary goal of this repository is to centralize small utilities that simpli
 ```text
 tools/
 ├── README.md
-├── recon/
-├── web/
-├── network/
 ├── linux/
-├── automation/
-└── wordlists/
+│   ├── README.md
+│   └── scripts/
+└── web/
+    ├── README.md
+    └── scripts/
 ```
 
 ---
 
-## Categories
+## Web Security
 
-### Recon
+Tools related to web application security, reconnaissance, and vulnerability assessment.
 
-Utilities for information gathering and asset discovery.
+Examples include:
 
-Examples:
-
-- Subdomain enumeration
-- DNS analysis
-- HTTP probing
-- Port scanning helpers
+- JavaScript analysis
+- Endpoint extraction
+- HTTP header analysis
+- Parameter discovery
+- Robots.txt parsing
+- Sitemap analysis
 - URL collection
-- Screenshot automation
-
----
-
-### Web
-
-Scripts focused on web application security.
-
-Examples:
-
-- Header analysis
-- JavaScript endpoint extraction
-- API discovery
-- Parameter collection
-- Authentication testing helpers
-- Content discovery
-
----
-
-### Network
-
-Networking and infrastructure utilities.
-
-Examples:
-
-- Network enumeration
-- Service fingerprinting
-- Packet analysis helpers
-- Host discovery
-- Port analysis
+- Redirect analysis
 - TLS inspection
+- Authentication testing helpers
 
 ---
 
-### Linux
+## Linux
 
-Linux administration and system utilities.
+Utilities for Linux systems, automation, and system administration.
 
-Examples:
+Examples include:
 
-- Enumeration scripts
-- System auditing
+- System enumeration
 - Log analysis
 - File processing
-- Monitoring
-- Performance utilities
+- Monitoring utilities
+- Shell automation
+- Docker helpers
+- Network utilities
+- Performance diagnostics
+- System auditing
 
 ---
 
-### Automation
+## Design Principles
 
-Automation scripts for daily workflows.
+Every tool should be:
 
-Examples:
-
-- Report generation
-- Data processing
-- CI/CD helpers
-- Docker utilities
-- Backup scripts
-- Git automation
-
----
-
-### Wordlists
-
-Curated wordlists and payload collections used during authorized security assessments.
-
-Examples:
-
-- Parameters
-- API endpoints
-- Common paths
-- File names
-- Extensions
-- Custom payloads
-
----
-
-## Philosophy
-
-Every tool included in this repository should aim to be:
-
-- Simple
+- Small and focused
 - Lightweight
+- Easy to understand
 - Well documented
-- Easy to modify
-- Easy to integrate into existing workflows
+- Easy to extend
+- Built for real-world usage
 
 ---
 
@@ -138,23 +84,14 @@ Common dependencies may include:
 - curl
 - jq
 - git
-- Docker
 
-Individual requirements are documented inside each tool directory.
-
----
-
-## Contributing
-
-Suggestions, improvements, and pull requests are always welcome.
-
-If you discover a bug or have an idea for a useful utility, feel free to open an issue or submit a contribution.
+Each tool documents its own requirements and usage.
 
 ---
 
 ## License
 
-This repository is released under the MIT License.
+Released under the MIT License.
 
 ---
 
