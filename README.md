@@ -1,4 +1,4 @@
-# Security Tools
+# Tools
 
 A curated collection of tools, scripts, and utilities developed or customized for practical security research, reconnaissance, Linux administration, networking, and workflow automation.
 
