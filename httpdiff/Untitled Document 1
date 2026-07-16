@@ -1,0 +1,1358 @@
+Build a production-quality open-source CLI tool named HTTPDiff.
+
+HTTPDiff is a semantic HTTP response comparison tool designed for security researchers, penetration testers, bug bounty hunters, developers, and system administrators.
+
+Traditional tools such as diff compare text line by line. HTTPDiff must understand the structure and meaning of HTTP responses.
+
+The tool should not only report that two values are different. It should classify the differences, suppress irrelevant dynamic noise, and explain which changes may be security-relevant.
+
+The project must be implemented in Python and structured as a maintainable open-source package.
+
+============================================================
+1. CORE IDEA
+============================================================
+
+HTTPDiff compares two HTTP responses and answers questions such as:
+
+- Did the status code change?
+- Were headers added, removed, or modified?
+- Did cookie security attributes change?
+- Did authentication or authorization-related data change?
+- Did the response body structure change?
+- Was user-controlled input reflected?
+- Did caching behavior change?
+- Did a redirect target change?
+- Did a security header disappear?
+- Are the observed differences probably random noise?
+- Could the behavior indicate a security issue?
+
+HTTPDiff must distinguish between:
+
+1. Raw textual differences
+2. Structural differences
+3. Semantic HTTP differences
+4. Potentially security-relevant findings
+5. Dynamic noise that should normally be ignored
+
+The output must clearly separate confirmed differences from heuristic security observations.
+
+Do not claim that a vulnerability definitely exists based only on response comparison.
+
+Use language such as:
+
+- Possible access-control difference
+- Potential reflection
+- Security-relevant cookie change
+- Cache behavior changed
+- Redirect target changed
+- Manual verification recommended
+
+============================================================
+2. PROJECT SCOPE
+============================================================
+
+The first stable version must support comparing responses from:
+
+1. Raw HTTP response files
+2. URLs requested by the tool
+3. Burp-style request files sent to a target
+4. Standard input where practical
+
+The tool must work reliably with HTTP/1.x response data.
+
+HTTP/2 support may be limited to responses obtained through the HTTP client library. Do not attempt to parse raw binary HTTP/2 frames in the first version.
+
+Only send requests to targets explicitly provided by the user. Do not implement automated crawling, mass scanning, distributed scanning, stealth, evasion, or exploitation.
+
+============================================================
+3. COMMAND-LINE INTERFACE
+============================================================
+
+The installed command should be:
+
+httpdiff
+
+Required usage examples:
+
+httpdiff compare response-a.txt response-b.txt
+
+httpdiff compare \
+  --baseline response-a.txt \
+  --candidate response-b.txt
+
+httpdiff url \
+  --baseline "https://example.com/account" \
+  --candidate "https://example.com/admin"
+
+httpdiff request \
+  --baseline-request request-a.txt \
+  --candidate-request request-b.txt
+
+cat response-a.txt | httpdiff compare --stdin-baseline response-b.txt
+
+Required global options:
+
+--help
+--version
+--verbose
+--quiet
+--no-color
+--config PATH
+--output PATH
+--format terminal|json|markdown
+--fail-on none|info|low|medium|high
+--timeout SECONDS
+--insecure
+--proxy URL
+--user-agent VALUE
+
+Required comparison options:
+
+--ignore-header NAME
+--include-header NAME
+--ignore-cookie NAME
+--ignore-json-path PATH
+--ignore-regex REGEX
+--normalize
+--no-normalize
+--show-raw-diff
+--show-unchanged
+--reflection-value VALUE
+--similarity-threshold FLOAT
+
+Allow repeated options where appropriate:
+
+--ignore-header Date
+--ignore-header X-Request-ID
+--ignore-header X-Trace-ID
+
+Exit codes:
+
+0 = comparison completed and no finding reached fail threshold
+1 = findings reached configured fail threshold
+2 = invalid arguments or malformed input
+3 = request/network failure
+4 = internal tool error
+
+============================================================
+4. INPUT FORMATS
+============================================================
+
+A raw HTTP response may look like:
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+Set-Cookie: session=abc; Secure; HttpOnly
+Cache-Control: private
+
+{"role":"user"}
+
+The parser must support:
+
+- CRLF and LF line endings
+- Duplicate headers
+- Multiple Set-Cookie headers
+- Empty body
+- Responses without an explicit HTTP status line
+- Header-only input
+- Body-only input when explicitly requested or automatically detected
+- Chunked transfer encoding when raw chunks are present
+- gzip, deflate, and Brotli decompression where dependencies permit
+- Text and binary response bodies
+- Character-set detection with safe fallback behavior
+- Malformed but recoverable HTTP responses
+
+Do not store headers in a plain dictionary because duplicate headers must be preserved.
+
+Create clear data models for:
+
+- HTTPResponse
+- HeaderCollection
+- Cookie
+- BodyAnalysis
+- Difference
+- Finding
+- ComparisonReport
+
+Use dataclasses or typed model classes.
+
+============================================================
+5. RESPONSE NORMALIZATION
+============================================================
+
+HTTP responses often contain changing values that generate meaningless diffs.
+
+Implement a normalization pipeline.
+
+Default dynamic headers to identify or optionally ignore:
+
+- Date
+- Server-Timing
+- X-Request-ID
+- X-Correlation-ID
+- X-Trace-ID
+- Traceparent
+- Tracestate
+- CF-Ray
+- X-Amzn-Trace-Id
+- X-Served-By
+- X-Cache-Hits
+- X-Timer
+- Age, but do not completely hide meaningful cache changes
+
+Normalize:
+
+- Header-name casing
+- Optional whitespace
+- Line endings
+- JSON formatting
+- HTML insignificant whitespace where safe
+- URL encoding where comparison benefits from it
+- Cookie attribute ordering
+- Numeric timing values
+- UUID-like values
+- Request identifiers
+- Timestamps
+- Random nonce-looking values
+
+Normalization must never silently destroy original evidence.
+
+Preserve:
+
+- Original value
+- Normalized value
+- Reason for normalization
+
+The report must be able to explain that a difference was suppressed as likely dynamic noise.
+
+Support custom ignore rules through CLI options and configuration files.
+
+============================================================
+6. STATUS AND PROTOCOL COMPARISON
+============================================================
+
+Compare:
+
+- HTTP version
+- Status code
+- Reason phrase
+- Informational, success, redirect, client-error, and server-error classes
+- Connection behavior where observable
+- Content presence versus empty response
+
+Examples of meaningful messages:
+
+- Status changed: 200 -> 403
+- Redirect changed: 302 -> 200
+- Error behavior changed: 500 -> 200
+- Response became empty
+- HTTP protocol version changed
+
+Assign severity conservatively.
+
+A status-code change alone is normally informational or low severity unless combined with stronger evidence.
+
+============================================================
+7. HEADER ANALYSIS
+============================================================
+
+Compare headers semantically.
+
+Required categories:
+
+General headers:
+- Content-Type
+- Content-Length
+- Content-Encoding
+- Content-Language
+- Location
+- Allow
+- Retry-After
+- Vary
+
+Security headers:
+- Content-Security-Policy
+- Content-Security-Policy-Report-Only
+- Strict-Transport-Security
+- X-Content-Type-Options
+- X-Frame-Options
+- Referrer-Policy
+- Permissions-Policy
+- Cross-Origin-Opener-Policy
+- Cross-Origin-Embedder-Policy
+- Cross-Origin-Resource-Policy
+
+Caching headers:
+- Cache-Control
+- Pragma
+- Expires
+- Age
+- ETag
+- Last-Modified
+- Vary
+- Surrogate-Control
+- CDN-Cache-Control
+- Cloudflare-CDN-Cache-Control
+- X-Cache
+- X-Cache-Hits
+- CF-Cache-Status
+- X-Served-By
+- Via
+
+CORS headers:
+- Access-Control-Allow-Origin
+- Access-Control-Allow-Credentials
+- Access-Control-Allow-Headers
+- Access-Control-Allow-Methods
+- Access-Control-Expose-Headers
+- Access-Control-Max-Age
+- Vary
+
+Authentication-related headers:
+- WWW-Authenticate
+- Authorization when comparing saved traffic
+- Proxy-Authenticate
+- Authentication-Info
+
+For every changed header, record:
+
+- Header name
+- Baseline values
+- Candidate values
+- Whether added, removed, or modified
+- Category
+- Normalized comparison result
+- Potential security relevance
+- Explanation
+
+Examples:
+
+- Strict-Transport-Security was removed
+- Content-Type changed from application/json to text/html
+- Cache-Control changed from private to public
+- Access-Control-Allow-Origin changed from a fixed origin to *
+- Location changed to an external host
+- Vary: Origin was removed while CORS behavior changed
+
+Avoid reporting every header change as a vulnerability.
+
+============================================================
+8. COOKIE ANALYSIS
+============================================================
+
+Parse every Set-Cookie header independently.
+
+Compare cookies by name and analyze:
+
+- Value changed
+- Cookie added
+- Cookie removed
+- Domain
+- Path
+- Expires
+- Max-Age
+- Secure
+- HttpOnly
+- SameSite
+- Partitioned
+- Priority
+- Host-only versus domain cookie where detectable
+- Prefix behavior for __Host- and __Secure-
+
+Required findings include:
+
+- Secure attribute removed
+- HttpOnly attribute removed
+- SameSite became weaker
+- Cookie domain became broader
+- Cookie path became broader
+- Session-like cookie appeared or disappeared
+- __Host- cookie requirements are not satisfied
+- Cookie lifetime changed significantly
+
+Cookie values should be redacted by default in terminal and Markdown reports.
+
+Show only a short fingerprint such as:
+
+session: sha256:8f3a... changed
+
+Provide an explicit option to show sensitive values:
+
+--show-secrets
+
+Never show secrets by default.
+
+============================================================
+9. BODY ANALYSIS
+============================================================
+
+Analyze the body based on Content-Type and content detection.
+
+Supported body types:
+
+- JSON
+- HTML
+- XML
+- Plain text
+- JavaScript
+- Form-encoded content
+- Binary or unknown content
+
+For all bodies compare:
+
+- Byte length
+- Character length
+- Hash
+- Similarity ratio
+- Entropy estimate where useful
+- Added and removed text segments
+- MIME type
+- Character set
+- Empty versus non-empty
+- Truncation status
+
+Do not load arbitrarily large bodies fully into memory without limits.
+
+Add configurable limits:
+
+--max-body-size
+--max-diff-lines
+--max-json-depth
+
+When a body exceeds limits:
+
+- Analyze metadata
+- Hash the content
+- Sample safely
+- Clearly report truncation
+
+============================================================
+10. JSON SEMANTIC DIFF
+============================================================
+
+When both bodies are JSON:
+
+- Parse them
+- Ignore formatting and key ordering
+- Compare objects recursively
+- Compare arrays
+- Report JSON paths
+- Identify added, removed, and modified keys
+- Preserve data types
+- Detect type changes
+- Detect boolean changes
+- Detect null versus missing
+- Detect number changes
+- Detect role, privilege, permission, authentication, and identity-related fields heuristically
+
+Examples:
+
+$.user.role: "user" -> "admin"
+$.authenticated: false -> true
+$.account.id: 1001 -> 1002
+$.permissions[2]: added "delete"
+$.email: field became visible
+$.debug: field added
+
+Sensitive-key patterns should include:
+
+- password
+- passwd
+- secret
+- token
+- access_token
+- refresh_token
+- api_key
+- authorization
+- session
+- private_key
+
+Redact sensitive values by default.
+
+Allow ignored JSON paths:
+
+--ignore-json-path '$.metadata.timestamp'
+--ignore-json-path '$.request_id'
+
+Do not assume a changed field proves authorization bypass.
+
+A possible authorization finding should require stronger combinations, for example:
+
+- Identity or privilege field changed
+- Response remained successful
+- Candidate exposes additional protected data
+- Authentication state did not appear to change intentionally
+
+Even then, label it as a heuristic.
+
+============================================================
+11. HTML SEMANTIC DIFF
+============================================================
+
+When both bodies are HTML:
+
+- Parse the DOM
+- Compare page title
+- Compare forms
+- Compare input fields
+- Compare links
+- Compare script sources
+- Compare iframe sources
+- Compare meta tags
+- Compare visible text
+- Compare comments optionally
+- Compare presence of login, logout, admin, role, error, and debug indicators
+- Ignore volatile attribute order
+- Optionally ignore generated framework attributes
+
+Report examples:
+
+- New password input appeared
+- Form action changed
+- External script source was added
+- CSP meta element disappeared
+- Page title changed from Login to Administration
+- Candidate contains additional account-management controls
+- Candidate includes a stack trace or debug information
+
+Do not execute JavaScript.
+
+Do not use a browser in the MVP.
+
+============================================================
+12. XML AND TEXT ANALYSIS
+============================================================
+
+For XML:
+
+- Parse safely
+- Disable external entity resolution
+- Compare elements, attributes, namespaces, and text
+- Never resolve external entities
+- Never fetch external schemas
+
+For plain text:
+
+- Generate a useful unified diff
+- Detect reflection
+- Detect changed error messages
+- Detect stack traces
+- Detect common secret patterns
+- Detect changed paths, usernames, role names, and identifiers
+
+============================================================
+13. REFLECTION ANALYSIS
+============================================================
+
+Support explicit reflection testing.
+
+Example:
+
+httpdiff compare a.txt b.txt --reflection-value "HTTPDIFF123"
+
+Search for:
+
+- Exact value
+- URL-encoded form
+- HTML-encoded form
+- JSON-escaped form
+- Unicode-escaped form
+- Base64 form where useful
+- Case-transformed form
+- Partially reflected value
+
+Report the context:
+
+- Response header
+- Cookie
+- HTML text
+- HTML attribute
+- Script block
+- JSON string
+- JSON key
+- XML element
+- Plain text
+
+Example output:
+
+Reflection detected:
+  Value: HTTPDIFF123
+  Location: HTML attribute
+  Encoding: none
+  Context: value="HTTPDIFF123"
+  Security note: unencoded reflection in an HTML attribute requires manual XSS verification
+
+Do not automatically label all reflections as XSS.
+
+============================================================
+14. REDIRECT ANALYSIS
+============================================================
+
+Compare redirect behavior:
+
+- Status codes 3xx
+- Location header
+- Relative versus absolute destination
+- Scheme
+- Host
+- Port
+- Path
+- Query string
+- Fragment
+- Cross-origin change
+- HTTPS-to-HTTP downgrade
+- Redirect chain when using URL mode
+
+Required observations:
+
+- Redirect target host changed
+- Redirect became cross-origin
+- Redirect downgraded from HTTPS to HTTP
+- Redirect parameter appears reflected in Location
+- Redirect loop detected
+- Redirect chain length changed
+
+Do not automatically report open redirect unless attacker-controlled input was supplied and reflected into an external Location target.
+
+============================================================
+15. CACHE BEHAVIOR ANALYSIS
+============================================================
+
+This is one of the most important features.
+
+Compare:
+
+- Cache-Control directives
+- Public versus private
+- no-store
+- no-cache
+- max-age
+- s-maxage
+- stale-while-revalidate
+- stale-if-error
+- immutable
+- must-revalidate
+- proxy-revalidate
+- Age
+- ETag
+- Last-Modified
+- Expires
+- Vary
+- CDN cache indicators
+- Cache hit and miss states
+
+Required semantic observations:
+
+- Response became publicly cacheable
+- no-store was removed
+- private changed to public
+- Vary changed
+- Vary: Cookie or Vary: Authorization disappeared
+- CDN status changed from MISS to HIT
+- Age increased
+- ETag remained stable while body changed
+- Body remained stable while ETag changed
+- Personalized data appears in a public-cacheable response
+- Authentication-related response appears cacheable
+
+Use conservative wording.
+
+Example:
+
+Potential cache-risk combination:
+  - Cache-Control: public
+  - Response contains user-specific fields
+  - Vary does not include Cookie or Authorization
+  Manual cache-isolation testing is recommended.
+
+HTTPDiff is not yet a complete cache-key discovery engine. Do not claim that it definitively knows the cache key.
+
+============================================================
+16. AUTHENTICATION AND AUTHORIZATION HEURISTICS
+============================================================
+
+Analyze possible authentication-related differences using multiple signals.
+
+Authentication signals:
+
+- Login/logout text
+- authenticated boolean
+- Session cookie changes
+- WWW-Authenticate changes
+- Token fields
+- Redirect to login
+- Status changes such as 401, 403, 200
+- Account identity fields
+- CSRF token changes
+
+Authorization signals:
+
+- Role changes
+- Permission changes
+- Additional private fields
+- Administrative UI elements
+- Object identifiers
+- Account ownership changes
+- Previously forbidden content becoming available
+
+Example finding:
+
+Possible access-control difference
+
+Evidence:
+- Baseline status: 403
+- Candidate status: 200
+- Candidate returned an account object
+- Authentication cookie fingerprint remained unchanged
+- Candidate contains additional permission fields
+
+Confidence: medium
+
+Manual verification required.
+
+Do not generate high-severity findings from keywords alone.
+
+Implement confidence levels:
+
+- low
+- medium
+- high
+
+Confidence must reflect evidence strength, not vulnerability severity.
+
+============================================================
+17. SECURITY FINDING ENGINE
+============================================================
+
+Implement a rule engine that consumes normalized differences.
+
+Each finding must contain:
+
+- Unique rule ID
+- Title
+- Category
+- Severity
+- Confidence
+- Summary
+- Evidence
+- Recommendation
+- False-positive considerations
+- References where appropriate
+
+Initial categories:
+
+- protocol
+- status
+- headers
+- cookies
+- body
+- reflection
+- redirect
+- caching
+- cors
+- authentication
+- authorization
+- information-disclosure
+- transport-security
+- content-security
+
+Initial severities:
+
+- info
+- low
+- medium
+- high
+
+Do not implement critical severity in the first release.
+
+Example rule identifiers:
+
+HTTPDIFF-HEADER-001
+HTTPDIFF-COOKIE-001
+HTTPDIFF-CACHE-001
+HTTPDIFF-REFLECT-001
+HTTPDIFF-AUTHZ-001
+HTTPDIFF-REDIRECT-001
+
+Keep rules modular and testable.
+
+Rules should not be hardcoded into presentation code.
+
+Use a structure such as:
+
+httpdiff/rules/
+  base.py
+  headers.py
+  cookies.py
+  caching.py
+  reflection.py
+  redirect.py
+  authentication.py
+  authorization.py
+
+============================================================
+18. OUTPUT FORMATS
+============================================================
+
+Support:
+
+1. Terminal output
+2. JSON output
+3. Markdown report
+
+Terminal output should be readable and grouped:
+
+Comparison Summary
+Status
+Headers
+Cookies
+Body
+Caching
+Reflection
+Redirects
+Security Findings
+Suppressed Dynamic Differences
+
+Use color only when the terminal supports it.
+
+Respect --no-color.
+
+The output must never depend only on color. Include text symbols and labels.
+
+Example:
+
+[INFO] Status unchanged: 200
+[CHANGE] Content-Type: application/json -> text/html
+[MEDIUM] Secure attribute removed from session cookie
+[LOW] Potential unencoded reflection in HTML content
+[NOISE] Date header changed and was normalized
+
+JSON output must be stable enough for automation.
+
+Create a versioned schema:
+
+{
+  "schema_version": "1.0",
+  "tool_version": "...",
+  "baseline": {},
+  "candidate": {},
+  "summary": {},
+  "differences": [],
+  "findings": [],
+  "suppressed": []
+}
+
+Markdown output should be suitable for:
+
+- GitHub issues
+- Pentest notes
+- Security reports
+- CI artifacts
+
+============================================================
+19. CONFIGURATION FILE
+============================================================
+
+Support a TOML configuration file.
+
+Default locations:
+
+./httpdiff.toml
+~/.config/httpdiff/config.toml
+
+Example:
+
+[comparison]
+similarity_threshold = 0.92
+max_body_size = 5242880
+normalize = true
+
+[ignore]
+headers = ["Date", "X-Request-ID", "CF-Ray"]
+cookies = ["analytics_id"]
+json_paths = ["$.metadata.timestamp"]
+regexes = ["request-id=[a-f0-9-]+"]
+
+[report]
+format = "terminal"
+show_secrets = false
+
+[rules]
+minimum_severity = "info"
+
+CLI arguments override configuration values.
+
+============================================================
+20. HTTP CLIENT MODE
+============================================================
+
+For URL and request modes:
+
+- Use a mature HTTP client library
+- Support GET, POST, PUT, PATCH, DELETE, HEAD, and OPTIONS
+- Support custom headers
+- Support request body
+- Support cookies
+- Support redirects
+- Support proxies
+- Support TLS verification control
+- Support timeout
+- Support compressed responses
+- Record response timing
+- Record redirect history
+- Record final URL
+
+Request files should support a Burp-like raw request format:
+
+GET /account HTTP/1.1
+Host: example.com
+Cookie: session=abc
+User-Agent: HTTPDiff
+
+Allow specifying scheme when not inferable:
+
+--scheme https
+
+Prevent unsafe surprises:
+
+- Do not retry non-idempotent methods by default
+- Do not automatically follow redirects unless enabled
+- Do not send credentials to a different origin during redirects
+- Warn before HTTPS-to-HTTP downgrade
+- Redact authorization headers in output
+
+============================================================
+21. PACKAGE STRUCTURE
+============================================================
+
+Use a clean structure similar to:
+
+httpdiff/
+├── pyproject.toml
+├── README.md
+├── LICENSE
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── SECURITY.md
+├── .gitignore
+├── .editorconfig
+├── httpdiff/
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── cli.py
+│   ├── config.py
+│   ├── models.py
+│   ├── parser.py
+│   ├── client.py
+│   ├── normalization.py
+│   ├── comparison.py
+│   ├── redaction.py
+│   ├── exceptions.py
+│   ├── analyzers/
+│   │   ├── status.py
+│   │   ├── headers.py
+│   │   ├── cookies.py
+│   │   ├── body.py
+│   │   ├── json_body.py
+│   │   ├── html_body.py
+│   │   ├── xml_body.py
+│   │   ├── reflection.py
+│   │   ├── redirect.py
+│   │   └── caching.py
+│   ├── rules/
+│   │   ├── base.py
+│   │   ├── headers.py
+│   │   ├── cookies.py
+│   │   ├── caching.py
+│   │   ├── reflection.py
+│   │   ├── redirect.py
+│   │   ├── authentication.py
+│   │   └── authorization.py
+│   └── reporters/
+│       ├── terminal.py
+│       ├── json_reporter.py
+│       └── markdown.py
+├── tests/
+│   ├── fixtures/
+│   ├── unit/
+│   └── integration/
+└── examples/
+    ├── json-role-change/
+    ├── cookie-hardening-change/
+    ├── cache-policy-change/
+    ├── reflection/
+    └── redirect-change/
+
+The exact structure may be adjusted when justified, but maintain separation between:
+
+- Parsing
+- Normalization
+- Comparison
+- Analysis
+- Rules
+- Reporting
+
+============================================================
+22. CODE QUALITY
+============================================================
+
+Requirements:
+
+- Python 3.11 or newer
+- Full type hints
+- Clear docstrings
+- No giant single-file implementation
+- No placeholder functions
+- No fake analysis results
+- No TODO-only implementations in required features
+- No broad exception swallowing
+- Custom exceptions with useful messages
+- Deterministic output
+- Cross-platform behavior where practical
+- Secure parsing defaults
+- Dependency versions declared in pyproject.toml
+- Use standard library where reasonable
+- Avoid excessive dependencies
+
+Use:
+
+- pytest
+- ruff
+- mypy or pyright
+- coverage
+- pre-commit where helpful
+
+Provide commands such as:
+
+python -m pytest
+ruff check .
+mypy httpdiff
+
+============================================================
+23. TESTING REQUIREMENTS
+============================================================
+
+Write comprehensive tests.
+
+Minimum required test scenarios:
+
+Parsing:
+- Basic HTTP response
+- Duplicate headers
+- Multiple cookies
+- CRLF and LF
+- Empty body
+- Body-only file
+- Malformed recoverable response
+- Compressed response
+- Chunked response
+
+Headers:
+- Added header
+- Removed header
+- Modified header
+- Duplicate header comparison
+- Security header removed
+- Cache-Control changed
+
+Cookies:
+- Secure removed
+- HttpOnly removed
+- SameSite changed
+- Domain widened
+- Cookie value redaction
+- Multiple cookies with the same name and different paths
+
+JSON:
+- Key added
+- Key removed
+- Value changed
+- Type changed
+- Array changed
+- Role change
+- Sensitive value redaction
+- Ignored JSON path
+
+HTML:
+- Title changed
+- Form action changed
+- New script source
+- Visible text changed
+- Reflection in attribute
+- Malformed HTML
+
+Caching:
+- private -> public
+- no-store removed
+- Vary removed
+- CDN MISS -> HIT
+- Personalized JSON combined with public caching
+
+Redirects:
+- Relative -> external
+- HTTPS -> HTTP
+- Host changed
+- Redirect loop in URL mode
+
+Normalization:
+- Date ignored
+- UUID normalized
+- Dynamic request ID suppressed
+- Original value preserved
+
+Reports:
+- Terminal report
+- JSON schema
+- Markdown report
+- No secrets shown by default
+
+CLI:
+- Help
+- Version
+- Invalid input
+- Exit thresholds
+- Output file
+- No-color mode
+
+Aim for at least 85 percent test coverage, but prioritize meaningful tests over superficial coverage.
+
+============================================================
+24. README REQUIREMENTS
+============================================================
+
+The README must explain the tool in simple but technically accurate language.
+
+It must clearly explain the difference between HTTPDiff and the traditional diff command.
+
+Use this conceptual explanation:
+
+Traditional diff tools compare lines and characters.
+
+For example, diff may show:
+
+- session=abc
++ session=xyz
+
+- "role": "user"
++ "role": "admin"
+
+That output shows what text changed, but it does not explain the HTTP or security meaning.
+
+HTTPDiff should instead explain:
+
+- A session cookie changed
+- The cookie security attributes remained unchanged
+- The JSON role changed from user to admin
+- The response status remained 200
+- The response may represent an access-control difference
+- Manual verification is required
+
+The README must include:
+
+- Project description
+- Why HTTPDiff exists
+- Difference from diff
+- Feature list
+- Installation
+- Quick start
+- Input formats
+- CLI examples
+- Example reports
+- Normalization behavior
+- Redaction and secret handling
+- Configuration
+- Exit codes
+- Limitations
+- Security model
+- Authorized-use statement
+- Development setup
+- Testing instructions
+- Contributing
+- Roadmap
+- License
+
+Include this core statement near the beginning:
+
+HTTPDiff does not merely compare response text. It compares HTTP behavior.
+
+Also explain that HTTPDiff does not prove vulnerabilities automatically. Its findings are evidence-based heuristics intended to guide manual security testing.
+
+============================================================
+25. README EXAMPLE
+============================================================
+
+Include an example similar to this.
+
+Baseline response:
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+Set-Cookie: session=abc; Secure; HttpOnly; SameSite=Lax
+Cache-Control: private
+
+{"user":{"id":10,"role":"user"}}
+
+Candidate response:
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+Set-Cookie: session=xyz; HttpOnly; SameSite=Lax
+Cache-Control: public
+
+{"user":{"id":10,"role":"admin"}}
+
+Traditional diff output:
+
+- session=abc; Secure
++ session=xyz
+
+- private
++ public
+
+- role:user
++ role:admin
+
+HTTPDiff output:
+
+Summary
+-------
+Status: unchanged, 200
+Content type: unchanged, application/json
+Body similarity: 94 percent
+
+Cookie Changes
+--------------
+[MEDIUM] Secure was removed from the session cookie.
+[INFO] Session cookie value changed and was redacted.
+
+Cache Changes
+-------------
+[MEDIUM] Cache-Control changed from private to public.
+
+JSON Changes
+------------
+[CHANGE] $.user.role changed from "user" to "admin".
+
+Security Observations
+---------------------
+[MEDIUM, confidence: medium]
+Possible authorization-related behavior change.
+
+Evidence:
+- HTTP status remained successful.
+- User role changed from user to admin.
+- The response also became publicly cacheable.
+
+Manual verification is required.
+
+============================================================
+26. SECURITY AND PRIVACY
+============================================================
+
+The tool may process credentials, cookies, tokens, personal information, and private response bodies.
+
+Implement secure defaults:
+
+- Redact secrets
+- Do not transmit telemetry
+- Do not upload data
+- Do not make external requests except user-requested target requests
+- Do not log full credentials
+- Do not expose Authorization or Cookie values in errors
+- Clearly warn when --show-secrets is used
+- Avoid writing reports with secrets unless explicitly enabled
+
+Include a SECURITY.md file explaining responsible vulnerability reporting for HTTPDiff itself.
+
+============================================================
+27. LIMITATIONS
+============================================================
+
+Document that the first release:
+
+- Does not prove that a vulnerability exists
+- Does not replace manual testing
+- Does not execute JavaScript
+- Does not parse raw HTTP/2 frames
+- Does not automatically discover cache keys
+- Does not crawl websites
+- Does not exploit findings
+- May produce false positives
+- May miss application-specific authorization semantics
+- Cannot infer user intent from response text alone
+
+============================================================
+28. IMPLEMENTATION PLAN
+============================================================
+
+Implement the project in stages, but deliver a working repository.
+
+Stage 1:
+- Project structure
+- Data models
+- Raw HTTP parser
+- Header comparison
+- Cookie comparison
+- Basic terminal report
+- Tests
+
+Stage 2:
+- JSON, HTML, XML, and text analyzers
+- Normalization
+- Secret redaction
+- JSON and Markdown reports
+- Tests
+
+Stage 3:
+- Reflection
+- Redirect
+- Caching
+- Authentication and authorization heuristics
+- Rule engine
+- Tests
+
+Stage 4:
+- URL mode
+- Raw request mode
+- Configuration
+- Exit thresholds
+- Documentation
+- Integration tests
+
+Do not stop after scaffolding.
+
+Complete all required stages unless a genuine technical limitation is encountered.
+
+============================================================
+29. FINAL VALIDATION
+============================================================
+
+Before considering the project complete:
+
+1. Install it in a clean virtual environment.
+2. Run all tests.
+3. Run linting.
+4. Run type checking.
+5. Build the package.
+6. Test the installed httpdiff command.
+7. Run all examples.
+8. Verify secrets are redacted.
+9. Verify JSON output is valid.
+10. Verify Markdown reports render correctly.
+11. Verify malformed input produces useful errors.
+12. Verify terminal output works with and without color.
+
+Provide a final implementation report containing:
+
+- What was implemented
+- Project structure
+- Dependencies
+- Test results
+- Coverage
+- Commands executed
+- Known limitations
+- Example commands
+- Example output
+- Suggested next improvements
+
+Do not describe unimplemented features as completed.
