@@ -1,0 +1,5 @@
+HTTP/1.1 200 OK
+Content-Type: text/html
+Set-Cookie: session=f6g7h8i9j0; Domain=.example.com; Path=/; SameSite=None
+
+<html><body>Welcome</body></html>

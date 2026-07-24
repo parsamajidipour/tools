@@ -1,0 +1,6 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Set-Cookie: session=abc123; Secure; HttpOnly; SameSite=Lax
+Cache-Control: private
+
+{"user":{"id":10,"role":"user"}}

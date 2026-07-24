@@ -1,0 +1,6 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Set-Cookie: session=xyz789; HttpOnly; SameSite=Lax
+Cache-Control: public
+
+{"user":{"id":10,"role":"admin"}}

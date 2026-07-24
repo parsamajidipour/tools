@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "httpdiff"
+version = "1.0.0"
+description = "Semantic HTTP response comparison tool for security researchers and developers"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "HTTPDiff Contributors" }]
+keywords = ["http", "diff", "security", "pentest", "bugbounty", "comparison"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Security",
+    "Topic :: Internet :: WWW/HTTP",
+    "Environment :: Console",
+]
+dependencies = [
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.2.0",
+    "tomli>=2.0.1; python_version < '3.11'",
+    "chardet>=5.2.0",
+]
+
+[project.optional-dependencies]
+brotli = ["brotli>=1.1.0"]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+]
+
+[project.scripts]
+httpdiff = "httpdiff.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["httpdiff*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["httpdiff"]

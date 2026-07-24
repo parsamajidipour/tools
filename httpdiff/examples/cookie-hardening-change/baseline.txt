@@ -1,0 +1,5 @@
+HTTP/1.1 200 OK
+Content-Type: text/html
+Set-Cookie: session=a1b2c3d4e5; Domain=example.com; Path=/; Secure; HttpOnly; SameSite=Strict
+
+<html><body>Welcome</body></html>

@@ -1,0 +1,4 @@
+HTTP/1.1 200 OK
+Content-Type: text/html
+
+<html><body><p>Search results for: <input value="HTTPDIFF123"></p></body></html>
